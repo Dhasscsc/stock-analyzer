@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ta">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>தாஸ் CSC - NSE Multi-Analyzer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        body { background-color: #f0f2f5; font-family: 'Segoe UI', sans-serif; }
+        .header { background: linear-gradient(135deg, #075E54, #128C7E); color: white; padding: 30px; text-align: center; border-bottom: 5px solid #25D366; }
+        .upload-box { background: white; border: 2px dashed #25D366; border-radius: 15px; padding: 30px; text-align: center; transition: 0.3s; }
+        .upload-box:hover { background: #e9f7ef; border-color: #075E54; }
+        .status-buy { background-color: #d1e7dd !important; color: #0f5132; font-weight: bold; }
+        .status-wait { background-color: #fff3cd !important; color: #664d03; font-weight: bold; }
+        .status-sell { background-color: #f8d7da !important; color: #842029; font-weight: bold; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+<div class="header shadow">
+    <h2>தாஸ் பொது சேவை மையம்</h2>
+    <h4>NSE வர்த்தகப் பகுப்பாய்வு மையம் (Multi-File Support)</h4>
+    <p class="mb-0">98 43 23 23 24 | 88 70 23 23 32</p>
+</div>
+
+<div class="container mt-4 mb-5">
+    <div class="row justify-content-center">
+        <div class="col-md-10">
+            <div class="upload-box shadow-sm mb-4">
+                <h5 class="text-dark mb-3"><i class="bi bi-cloud-arrow-up-fill text-success"></i> NSE அறிக்கைகளை பதிவேற்றவும்</h5>
+                <p class="text-muted small">MTO .DAT கோப்பு மற்றும் .CSV கோப்புகளை ஒரே நேரத்தில் தேர்ந்தெடுக்கலாம் (Ctrl அழுத்திக்கொண்டு தேர்ந்தெடுக்கவும்)</p>
+                <div class="input-group">
+                    <input type="file" id="fileInput" class="form-control" accept=".dat,.csv,.txt" multiple>
+                    <button class="btn btn-success px-4" onclick="handleFiles()">ஆய்வு செய் (Analyze All)</button>
+                </div>
+                <div id="fileList" class="mt-2 small text-primary fw-bold"></div>
+            </div>
+
+            <div id="resultsArea" class="card shadow-sm hidden">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-bar-chart-fill"></i> பங்குச் சந்தை பரிந்துரைகள்</span>
+                    <input type="text" id="searchBox" class="form-control form-control-sm w-25" placeholder="பங்கைத் தேடுக..." onkeyup="filterTable()">
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover table-bordered mb-0" id="stockTable">
+                        <thead class="table-secondary text-center">
+                            <tr>
+                                <th>பங்கு (Symbol)</th>
+                                <th>வர்த்தக அளவு</th>
+                                <th>டெலிவரி அளவு</th>
+                                <th>டெலிவரி %</th>
+                                <th>பரிந்துரை (Signal)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody" class="text-center"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let combinedData = {};
+
+    function handleFiles() {
+        const files = document.getElementById('fileInput').files;
+        if (files.length === 0) return alert("தயவுசெய்து கோப்புகளைத் தேர்ந்தெடுக்கவும்!");
+
+        combinedData = {}; // Reset data
+        let filesProcessed = 0;
+
+        for (let i = 0; i < files.length; i++) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                parseData(e.target.result);
+                filesProcessed++;
+                if (filesProcessed === files.length) {
+                    displayResults();
+                }
+            };
+            reader.readAsText(files[i]);
+        }
+    }
+
+    function parseData(content) {
+        const lines = content.split('\n');
+        lines.forEach(line => {
+            const cols = line.split(',');
+            
+            // DAT format (Record Type 20) or CSV format
+            let symbol, tradedQty, delQty, delPct;
+
+            if (cols[0] === '20' && cols.length >= 6) { 
+                // DAT file format
+                symbol = cols[2].trim();
+                tradedQty = parseInt(cols[3]);
+                delQty = parseInt(cols[4]);
+                delPct = parseFloat(cols[5]);
+            } else if (cols.length >= 6 && !isNaN(parseFloat(cols[5]))) {
+                // Typical CSV format
+                symbol = cols[0].trim().replace(/"/g, '');
+                tradedQty = parseInt(cols[2]);
+                delQty = parseInt(cols[4]);
+                delPct = parseFloat(cols[5]);
+            }
+
+            if (symbol && !isNaN(delPct)) {
+                combinedData[symbol] = {
+                    tradedQty: tradedQty,
+                    delQty: delQty,
+                    delPct: delPct
+                };
+            }
+        });
+    }
+
+    function displayResults() {
+        const tbody = document.getElementById('tableBody');
+        tbody.innerHTML = '';
+        
+        const sortedSymbols = Object.keys(combinedData).sort();
+
+        sortedSymbols.forEach(symbol => {
+            const data = combinedData[symbol];
+            let signal = "";
+            let rowClass = "";
+
+            if (data.delPct >= 70) {
+                signal = "Strong Buy 🚀";
+                rowClass = "status-buy";
+            } else if (data.delPct >= 45) {
+                signal = "Hold / Wait ⚖️";
+                rowClass = "status-wait";
+            } else {
+                signal = "Avoid / Sell ⚠️";
+                rowClass = "status-sell";
+            }
+
+            const row = `
+                <tr>
+                    <td class="fw-bold">${symbol}</td>
+                    <td>${data.tradedQty.toLocaleString()}</td>
+                    <td>${data.delQty.toLocaleString()}</td>
+                    <td>${data.delPct}%</td>
+                    <td class="${rowClass}">${signal}</td>
+                </tr>`;
+            tbody.innerHTML += row;
+        });
+
+        document.getElementById('resultsArea').classList.remove('hidden');
+    }
+
+    function filterTable() {
+        const query = document.getElementById('searchBox').value.toUpperCase();
+        const rows = document.getElementById('tableBody').getElementsByTagName('tr');
+        for (let i = 0; i < rows.length; i++) {
+            const text = rows[i].innerText.toUpperCase();
+            rows[i].style.display = text.indexOf(query) > -1 ? "" : "none";
+        }
+    }
+
+    document.getElementById('fileInput').addEventListener('change', function() {
+        const names = Array.from(this.files).map(f => f.name).join(' | ');
+        document.getElementById('fileList').innerText = "தேர்ந்தெடுக்கப்பட்டவை: " + names;
+    });
+</script>
+
+</body>
+</html>
